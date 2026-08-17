@@ -277,7 +277,7 @@ john --show id_rsa.hash
 
 ## Overview
 
-**Hashcat** is the industry-standard, GPU-accelerated password cracking utility designed for high-throughput recovery of cryptographic hashes across Linux, Windows, and macOS. It leverages massive parallelism across OpenCL/CUDA compute cores, making it orders of magnitude faster than CPU-only tools when attacking raw algorithms (e.g., MD5, NTLM, SHA-256).
+[**Hashcat**](https://hashcat.net/) is the industry-standard, GPU-accelerated password cracking utility designed for high-throughput recovery of cryptographic hashes across Linux, Windows, and macOS. It leverages massive parallelism across OpenCL/CUDA compute cores, making it orders of magnitude faster than CPU-only tools when attacking raw algorithms (e.g., MD5, NTLM, SHA-256).
 
 ```
                             ┌──────────────────────────────────────────────┐
@@ -308,7 +308,7 @@ $$\text{hashcat} \quad -a \text{ [Mode]} \quad -m \text{ [Hash ID]} \quad \text{
 
 ## 2. Common Hash Types & Identification
 
-Hashcat assigns unique numeric IDs to hundreds of hash formats. Identifying the target algorithm can be done via known context, the official Hashcat example table, or the `hashid` tool.
+Hashcat assigns unique numeric IDs to hundreds of hash formats. Identifying the target algorithm can be done via known context, the official Hashcat example table, or the [`hashid`](https://github.com/psypanda/hashID) tool.
 
 ```bash
 enamto@htb[/htb]$ hashid -m '$1$FNr44XZC$wQxY6HHLrgrGX0e1195k.1'
@@ -320,18 +320,18 @@ Analyzing '$1$FNr44XZC$wQxY6HHLrgrGX0e1195k.1'
 
 ### Essential Hashcat Mode Reference (`-m`)
 
-|**Mode (-m)**|**Algorithm / Protocol**|**Format Example / Description**|
-|---|---|---|
-|**`0`**|MD5|Raw 128-bit hexadecimal digest (`e3e3ec5831ad5e72...`)|
-|**`100`**|SHA1|Raw 160-bit hexadecimal digest|
-|**`1000`**|NTLM|Windows NT password hash (`b4b9b02e6f09a9bd...`)|
-|**`1800`**|sha512crypt `$6$`|Standard modern Linux `/etc/shadow` hash|
-|**`5600`**|NetNTLMv2|Captured Windows network authentication challenge/response|
-|**`13100`**|Kerberos 5 TGS-REP|Kerberoasting service ticket format (`$krb5tgs$23$...`) \vert{} \vert{} **`22000`** \vert{} WPA-PBKDF2-PMKID / EAPOL \vert{} Modern WPA/WPA2 wireless captures \vert{} --- ## 3. Attack Mode 0: Dictionary & Rule-Based Attacks ### Straight Wordlist Attack (`-a 0`) Tests entries from a plaintext wordlist line-by-line against target hashes: `bash enamto@htb[/htb]$ hashcat -a 0 -m 0 e3e3ec5831ad5e7288241960e5d4fdb8 /usr/share/wordlists/rockyou.txt` ### Rule-Based Wordlist Mutations (`-a 0 -r`) When basic wordlists fail, mutation rules located in `/usr/share/hashcat/rules/` alter words on the fly (e.g., appending common digits, capitalization, l33t-speak substitution). `bash enamto@htb[/htb]$ hashcat -a 0 -m 0 1b0556a75770563578569ae21392630c \ /usr/share/wordlists/rockyou.txt \ -r /usr/share/hashcat/rules/best64.rule` * **`best64.rule`:** Fast baseline rule set containing 64 of the most statistically effective transformations. * **`rockyou-30000.rule`:** Exhaustive rule set applying complex permutations for large-scale cracking rigs. --- ## 4. Attack Mode 3: Mask Attacks (Targeted Brute-Force) Mask attacks define the exact keyspace structure per character position, avoiding exhaustive searches over impossible character sets. `Mask Pattern: ?u?l?l?l?l?d?s │ │ │ │ │ │ └─► Special Character (!, @, #) │ │ │ │ │ └───► Digit (0-9) │ └────────┴─────► 4 Lowercase Letters (a-z) └─────────────────► 1 Uppercase Letter (A-Z)` ### Built-in Character Sets \vert{} Symbol \vert{} Character Set \vert{} Definition \vert{} \vert{} :--- \vert{} :--- \vert{} :--- \vert{} \vert{} **`?l`** \vert{} Lowercase letters \vert{} `abcdefghijklmnopqrstuvwxyz` \vert{} \vert{} **`?u`** \vert{} Uppercase letters \vert{} `ABCDEFGHIJKLMNOPQRSTUVWXYZ` \vert{} \vert{} **`?d`** \vert{} Digits \vert{} `0123456789` \vert{} \vert{} **`?h`** \vert{} Hexadecimal lowercase \vert{} `0123456789abcdef` \vert{} \vert{} **`?s`** \vert{} Special characters \vert{} `«space»!"#$%&'()*+,-./:;<=>?@[\]^_`{\|}~`|
-|**`?a`**|All standard ASCII|`?l?u?d?s`|
-|**`?b`**|All binary bytes|`0x00 - 0xff`|
+| **Mode (-m)** | **Algorithm / Protocol** | **Format Example / Description**                           |
+| ------------- | ------------------------ | ---------------------------------------------------------- |
+| **`0`**       | MD5                      | Raw 128-bit hexadecimal digest (`e3e3ec5831ad5e72...`)     |
+| **`100`**     | SHA1                     | Raw 160-bit hexadecimal digest                             |
+| **`1000`**    | NTLM                     | Windows NT password hash (`b4b9b02e6f09a9bd...`)           |
+| **`1800`**    | sha512crypt `$6$`        | Standard modern Linux `/etc/shadow` hash                   |
+| **`5600`**    | NetNTLMv2                | Captured Windows network authentication challenge/response |
+| **`13100`**   | Kerberos 5 TGS-REP       | Kerberoasting service ticket format (`$krb5tgs$23$...`) `  |
+| **`?a`**      | All standard ASCII       | `?l?u?d?s`                                                 |
+| **`?b`**      | All binary bytes         | `0x00 - 0xff`                                              |
 
-### Practical Execution: Custom Mask Attack
+### Practical Execution: [Custom Mask Attack](https://hashcat.net/wiki/doku.php?id=mask_attack)
 
 Cracking a hash where the password format is known to be **[Upper][4 Lower][Digit][Special]** (e.g., `Admin1!`):
 
@@ -345,3 +345,6 @@ enamto@htb[/htb]$ hashcat -a 3 -m 0 1e293d6912d074c0fd15844d803400dd '?u?l?l?l?l
 # ?1 = Lowercase + Digits; Length = 6 characters
 hashcat -a 3 -m 1000 target.hash -1 '?l?d' '?1?1?1?1?1?1'
 ```
+
+---
+
