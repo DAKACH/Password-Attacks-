@@ -140,3 +140,136 @@ rockyou
 12345678
 abc123
 ```
+---
+
+# John The Ripper (JtR) Foundations & Cracking Modes
+
+## Overview
+
+**John the Ripper (JtR)** is an open-source, highly adaptable password cracking tool originally developed for UNIX-based environments. The community-enhanced **JtR Jumbo** version extends core capabilities with OpenMP multi-threading, 64-bit architecture optimizations, expanded hash support (hundreds of formats), and an extensive suite of `*2john` file conversion utilities.
+
+```
+[ Target Data: /etc/shadow, Encrypted PDF, SSH Key, NTLM ]
+                        │
+                        ▼
+           [ Conversion via *2john Utility ]
+                        │
+                        ▼
+       [ Format Identification (hashid / context) ]
+                        │
+                        ▼
+      ┌─────────────────┴─────────────────┐
+      ▼                                   ▼
+[ Wordlist + Rules Mode ]      [ Incremental / Single Mode ]
+      │                                   │
+      └─────────────────┬─────────────────┘
+                        ▼
+        [ Plaintext Credential Recovery ]
+```
+
+## 1. Core Cracking Modes
+
+```
+                                  ┌──────────────────────────────────────────────┐
+                                  │           JtR Cracking Strategies            │
+                                  └──────────────────────┬───────────────────────┘
+                                                         │
+         ┌───────────────────────────────────────────────┼───────────────────────────────────────────────┐
+         ▼                                               ▼                                               ▼
++--------------------------------+              +--------------------------------+              +--------------------------------+
+|          Single Mode           |              |         Wordlist Mode          |              |        Incremental Mode        |
+|  `john --single <file>`        |              |  `john --wordlist=<list> <f>`  |              |  `john --incremental <file>`   |
+| Rules based on GECOS & user    |              | Dictionary + optional rules    |              | Markov model based brute-force |
++--------------------------------+              +--------------------------------+              +--------------------------------+
+```
+
+### Mode Comparison Matrix
+
+|**Cracking Mode**|**Mechanism & Strategy**|**Primary Target / Use Case**|**Syntax Example**|
+|---|---|---|---|
+|**Single Mode**|Leverages username, home directory path, and GECOS information (real name, phone) using mutating permutation rules.|Linux `/etc/passwd` or `/etc/shadow` entries where users pick passwords based on personal names.|`john --single passwd`|
+|**Wordlist Mode**|Standard dictionary attack testing pre-existing password lists line-by-line; supports dynamic rule mutations.|General password auditing against real-world breach wordlists (`rockyou.txt`).|`john --wordlist=rockyou.txt hashes.txt`|
+|**Incremental Mode**|Statistical brute-force using Markov chain models to test character combinations in order of probability.|Exhaustive recovery when wordlist attacks fail and keyspace parameters can be constrained.|`john --incremental hashes.txt`|
+
+## 2. Practical Execution: Single Mode against Unix Passwd
+
+Given a standard Linux shadow/passwd entry containing user and GECOS metadata:
+
+```
+r0lf:$6$ues25dIanlctrWxg$nZHVz2z4kCy1760Ee28M1xtHdGoy0C2cYzZ8l2sVa1kIa8K9gAcdBP.GI6ng/qA4oaMrgElZ1Cb9OeXO4Fvy3/:0:0:Rolf Sebastian:/home/r0lf:/bin/bash
+```
+
+### Launching Single Mode
+
+```bash
+enamto@htb[/htb]$ john --single passwd
+
+Loaded 1 password hash (sha512crypt, crypt(3) $6$ [SHA512 256/256 AVX2 4x])
+Cost 1 (iteration count) is 5000 for all loaded hashes
+Will run 4 OpenMP threads
+1g 0:00:00:00 DONE (2026-08-17) 12.50g/s 5400p/s 5400c/s 5400C/s
+```
+
+### Inspecting Cracked Results
+
+```bash
+enamto@htb[/htb]$ john --show passwd
+```
+
+## 3. Hash Identification & Format Flags
+
+When the hashing algorithm cannot be inferred from the prefix (e.g., `$6$` for SHA-512 crypt, `$1$` for MD5 crypt), use `hashid` with the `-j` flag to output candidate JtR formats:
+
+```bash
+enamto@htb[/htb]$ hashid -j 193069ceb0461e1d40d216e32c79c704
+
+Analyzing '193069ceb0461e1d40d216e32c79c704'
+[+] MD5 [JtR Format: raw-md5]
+[+] NTLM [JtR Format: nt]
+[+] RIPEMD-128 [JtR Format: ripemd-128]
+```
+
+### Common JtR Format Flags (`--format=<format>`)
+
+|**Target Algorithm / Protocol**|**JtR Format Identifier**|**Example Invocation**|
+|---|---|---|
+|**Raw MD5**|`raw-md5`|`john --format=raw-md5 hashes.txt`|
+|**Raw SHA-256 / SHA-512**|`raw-sha256` / `raw-sha512`|`john --format=raw-sha256 hashes.txt`|
+|**Windows NT (NTLM)**|`nt`|`john --format=nt ntlm_hashes.txt`|
+|**NetNTLMv2**|`netntlmv2`|`john --format=netntlmv2 captured_v2.txt`|
+|**Linux crypt(3) SHA-512**|`sha512crypt`|`john --format=sha512crypt shadow.txt`|
+|**Kerberos 5 TGS (Kerberoast)**|`krb5tgs`|`john --format=krb5tgs krb_tgs.txt`|
+
+## 4. Extracting & Cracking Encrypted Files (`*2john`)
+
+JtR includes extraction utilities that convert encrypted file containers, archives, and keys into format-compliant hash strings.
+
+$$\text{[utility]}2\text{john [encrypted\_target]} > \text{target.hash}$$
+
+### Essential `*2john` Conversion Tools
+
+|**Utility**|**Input File Type**|**Extraction Command Example**|
+|---|---|---|
+|**`ssh2john`**|Encrypted SSH Private Key|`ssh2john id_rsa > id_rsa.hash`|
+|**`zip2john`**|Password-Protected ZIP Archive|`zip2john secret.zip > zip.hash`|
+|**`rar2john`**|Encrypted RAR Archive|`rar2john backup.rar > rar.hash`|
+|**`pdf2john`**|Password-Protected PDF Document|`pdf2john locked.pdf > pdf.hash`|
+|**`keepass2john`**|KeePass Database (`.kdbx`)|`keepass2john database.kdbx > keepass.hash`|
+|**`putty2john`**|Encrypted PuTTY Key (`.ppk`)|`putty2john key.ppk > putty.hash`|
+|**`office2john`**|Encrypted MS Office Document|`office2john report.docx > office.hash`|
+
+### Execution Workflow: SSH Key Cracking Example
+
+```bash
+# 1. Extract hash from encrypted RSA key
+ssh2john id_rsa > id_rsa.hash
+
+# 2. Run dictionary attack using JtR
+john --wordlist=/usr/share/wordlists/rockyou.txt id_rsa.hash
+
+# 3. View cracked passphrase
+john --show id_rsa.hash
+```
+
+---
+
