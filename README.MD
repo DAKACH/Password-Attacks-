@@ -348,3 +348,119 @@ hashcat -a 3 -m 1000 target.hash -1 '?l?d' '?1?1?1?1?1?1'
 
 ---
 
+# Custom Wordlist Generation & Hashcat Mutation Rules
+
+## Overview
+
+Enterprise password policies mandate complexity (uppercase, digits, special characters, minimum lengths), yet users consistently choose predictable variations of familiar terms—company names, current seasons, months, or OSINT-derived keywords.
+
+To maximize password-cracking efficiency, penetration testers generate **targeted custom wordlists** (via web scrapers like **CeWL**) and expand them using **custom Hashcat mutation rules**.
+
+```
+[ Target Scraping (CeWL / OSINT) ] ──> [ Base Seed List ] ──> [ Hashcat Custom Rules ] ──> [ Targeted Wordlist ]
+```
+
+## 1. Predictable Human Password Patterns
+
+Users rarely select truly random characters; they adapt predictable baseline keywords to meet standard corporate complexity policies:
+
+|**Transformation Pattern**|**Example Password Format**|
+|---|---|
+|**Capitalized First Letter**|`Password`|
+|**Appended Numeric Sequence**|`Password123`|
+|**Appended Year**|`Password2026`|
+|**Appended Month / Date**|`Password08`|
+|**Appended Special Character**|`Password2026!`|
+|**Leet-Speak + Symbol Substitution**|`P@ssw0rd2026!`|
+
+## 2. Hashcat Custom Mutation Rule Syntax
+
+Hashcat rules define precise string manipulations per line. When applied, Hashcat mutates each candidate word from a base list through the specified transformations.
+
+### Common Rule Primitives
+
+|**Rule Function**|**Action & Description**|
+|---|---|
+|`:`|**No-op:** Do nothing (keeps the original word unchanged).|
+|`l`|**Lowercase:** Converts all characters to lowercase.|
+|`u`|**Uppercase:** Converts all characters to uppercase.|
+|`c`|**Capitalize:** Capitalizes the first character and lowercases the remainder.|
+|`sXY`|**Substitute:** Replaces all instances of character `X` with character `Y` (e.g., `so0` replaces `o` with `0`).|
+|`$X`|**Append:** Appends character `X` to the end of the word (e.g., `$!` appends `!`).|
+|`^X`|**Prepend:** Prepends character `X` to the beginning of the word.|
+
+## 3. Practical Rule Implementation
+
+### Step 1: Define `custom.rule`
+
+Create a rule file containing combined mutations:
+
+```
+:
+c
+so0
+c so0
+sa@
+c sa@
+c sa@ so0
+$!
+$! c
+$! so0
+$! sa@
+$! c so0
+$! c sa@
+$! so0 sa@
+$! c so0 sa@
+```
+
+### Step 2: Generate Mutated Wordlist via `--stdout`
+
+Using `--stdout` tells Hashcat to output the generated word permutations to the console instead of cracking:
+
+```bash
+enamto@htb[/htb]$ hashcat --force password.list -r custom.rule --stdout | sort -u > mut_password.list
+```
+
+### Output Comparison
+
+A single base word (`password`) expands into 15 policy-compliant target candidates:
+
+```
+password
+Password
+passw0rd
+Passw0rd
+p@ssword
+P@ssword
+P@ssw0rd
+password!
+Password!
+passw0rd!
+p@ssword!
+Passw0rd!
+P@ssword!
+p@ssw0rd!
+P@ssw0rd!
+```
+
+## 4. Targeted Web Scraping with CeWL
+
+**CeWL (Custom Word List generator)** crawls target web applications to scrape internal terminology, employee names, product lines, and corporate jargon into a targeted seed wordlist.
+
+```bash
+enamto@htb[/htb]$ cewl https://www.inlanefreight.com -d 4 -m 6 --lowercase -w inlane.wordlist
+enamto@htb[/htb]$ wc -l inlane.wordlist
+
+326
+```
+
+### CeWL Parameter Reference
+
+|**Flag**|**Parameter**|**Function**|
+|---|---|---|
+|`-d <depth>`|Crawl Depth|Maximum link depth to crawl (e.g., `-d 4`).|
+|`-m <length>`|Minimum Length|Minimum character length for scraped words (e.g., `-m 6`).|
+|`--lowercase`|Lowercase Normalization|Normalizes all extracted words to lowercase.|
+|`-w <file>`|Write Output|Saves the resulting wordlist to the specified file path.|
+|`-e`, `--email`|Include Emails|Extracts scraped email addresses into a separate list.|
+
