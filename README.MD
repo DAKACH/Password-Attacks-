@@ -464,3 +464,111 @@ enamto@htb[/htb]$ wc -l inlane.wordlist
 |`-w <file>`|Write Output|Saves the resulting wordlist to the specified file path.|
 |`-e`, `--email`|Include Emails|Extracts scraped email addresses into a separate list.|
 
+---
+
+# Cracking Protected Files, Encrypted Documents, & SSH Keys
+
+## Overview
+
+While cryptographic storage and transmission regulations (e.g., [GDPR](https://gdpr-info.eu/)) require data encryption, employees frequently protect sensitive files using weak, memorable passphrases. During post-exploitation, identifying encrypted archives, office documents, PDFs, and private keys allows operators to extract format-specific hashes and crack them offline without alerting target monitoring systems.
+
+```
+[ Post-Exploitation Discovery ] ──> [ Extract Hash via *2john ] ──> [ Offline Dictionary/Rule Attack ] ──> [ Decrypted Access ]
+```
+
+## 1. Locating Encrypted Files & Private Keys
+
+### Finding Document Formats across File Systems
+
+```bash
+for ext in $(echo ".xls .xlsx .xltx .odt .doc .docx .pdf .pot .potx .pptx"); do 
+  echo -e "\nScanning for: $ext"
+  find / -name "*$ext" 2>/dev/null | grep -v "lib\|fonts\|share\|core"
+done
+```
+
+### Searching for SSH Private Keys via Header Signatures
+
+SSH private keys do not require a specific file extension; they are identified by standard PEM/OpenSSH header markers:
+
+```bash
+grep -rnE '^\-{5}BEGIN [A-Z0-9 ]+ PRIVATE KEY\-{5}$' /home/ /root/ 2>/dev/null
+```
+
+```bash
+/home/jsmith/.ssh/id_ed25519:1:-----BEGIN OPENSSH PRIVATE KEY-----
+/home/jsmith/.ssh/SSH.private:1:-----BEGIN RSA PRIVATE KEY-----
+/home/jsmith/Documents/id_rsa:1:-----BEGIN OPENSSH PRIVATE KEY-----
+```
+
+### Verifying Passphrase Protection
+
+Use `ssh-keygen` to test whether a private key requires a passphrase to decrypt:
+
+```bash
+# Unencrypted Key (outputs public key directly):
+enamto@htb[/htb]$ ssh-keygen -yf ~/.ssh/id_ed25519
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIpNefJd834VkD5iq+22Zh59Gzmmtzo6rAffCx2UtaS6
+
+# Encrypted Key (prompts for passphrase):
+enamto@htb[/htb]$ ssh-keygen -yf ~/.ssh/id_rsa
+Enter passphrase for "/home/jsmith/.ssh/id_rsa":
+```
+
+## 2. Hash Extraction with `*2john` Tool Suite
+
+John the Ripper includes dedicated python and perl conversion utilities located in `/usr/share/john/` or `/usr/bin/`.
+
+```bash
+enamto@htb[/htb]$ locate *2john*
+```
+
+### Extraction & Cracking Reference Table
+
+|**Target File Type**|**Extraction Utility**|**Extraction Command Syntax**|**JtR Cracking Command**|
+|---|---|---|---|
+|**SSH Private Key**|`ssh2john.py`|`ssh2john.py id_rsa > ssh.hash`|`john --wordlist=rockyou.txt ssh.hash`|
+|**MS Office (.docx/.xlsx)**|`office2john.py`|`office2john.py Protected.docx > docx.hash`|`john --wordlist=rockyou.txt docx.hash`|
+|**PDF Document**|`pdf2john.py`|`pdf2john.py Protected.pdf > pdf.hash`|`john --wordlist=rockyou.txt pdf.hash`|
+|**ZIP Archive**|`zip2john`|`zip2john archive.zip > zip.hash`|`john --wordlist=rockyou.txt zip.hash`|
+|**RAR Archive**|`rar2john`|`rar2john backup.rar > rar.hash`|`john --wordlist=rockyou.txt rar.hash`|
+|**KeePass Database**|`keepass2john`|`keepass2john vault.kdbx > keepass.hash`|`john --wordlist=rockyou.txt keepass.hash`|
+
+## 3. Practical Extraction & Cracking Workflows
+
+### Workflow 1: Cracking Encrypted SSH Keys
+#### 1. Extract Hash:
+Converts PEM/OpenSSH blob to a standard JtR hash
+
+```bash
+ssh2john.py SSH.private > ssh.hash
+```
+
+#### 2. Execute Offline Cracking:
+Performs dictionary attack using rockyou.txt
+
+```bash
+john --wordlist=/usr/share/wordlists/rockyou.txt ssh.hash
+```
+
+#### 3. View Recovered Password:
+Displays recovered plaintext passphrase
+
+```bash
+john ssh.hash --show
+# Output: SSH.private:1234
+```
+
+### Workflow 2: Cracking MS Office & PDF Documents
+
+```bash
+# MS Office Documents (.docx, .xlsx, .pptx)
+office2john.py Protected.docx > protected-docx.hash
+john --wordlist=/usr/share/wordlists/rockyou.txt protected-docx.hash
+john protected-docx.hash --show
+
+# PDF Documents
+pdf2john.py Protected.pdf > pdf.hash
+john --wordlist=/usr/share/wordlists/rockyou.txt pdf.hash
+john pdf.hash --show
+```
